@@ -1,0 +1,11 @@
+groups:
+  - name: alert
+    rules:
+      - alert: Is node exporter up?
+        expr: up{job="node-exporter"} == 0
+        labels:
+          team: devops
+          severity: Critical
+        annotations:
+          summary: "{{ $labels.instance }} is down"
+          description: "The node exporter instance is down for more than 2 minutes"

@@ -39,6 +39,10 @@ services:
       - "3000:3000"
     volumes:
       - ./grafana-storage:/var/lib/grafana
+      - ./grafana-config/grafana.ini:/etc/grafana/grafana.ini
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
     depends_on:
       - loki
       - prometheus
@@ -56,6 +60,13 @@ services:
     build: ./app
     ports:
       - "8000:8000"
+    depends_on:
+      - prometheus
+
+  shoehubapp:
+    image: aussiearef/shoehub:latest
+    ports:
+      - "8080:8080"
     depends_on:
       - prometheus
 

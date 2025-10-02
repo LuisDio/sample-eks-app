@@ -17,12 +17,23 @@ services:
     depends_on:
       - loki
 
-  prometheus:
+  prometheus_shard1:
     image: prom/prometheus:v2.53.0
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus-shard1-data:/prometheus # TSDB folder for sidecar
+      - ./prometheus1.yml:/etc/prometheus/prometheus.yml
+      - ./rules:/etc/prometheus/rules
+      - ./file_sd:/etc/prometheus/file_sd
+
+  prometheus_shard2:
+    image: prom/prometheus:v2.53.0
+    ports:
+      - "9092:9090"
+    volumes:
+      - ./prometheus-shard2-data:/prometheus # TSDB folder for sidecar
+      - ./prometheus2.yml:/etc/prometheus/prometheus.yml
       - ./rules:/etc/prometheus/rules
       - ./file_sd:/etc/prometheus/file_sd
 
@@ -31,9 +42,10 @@ services:
     ports:
       - "9100:9100"
     depends_on:
-      - prometheus
+      - prometheus_shard1
+      - prometheus_shard2
 
-  grafana:
+  grafana1:
     image: grafana/grafana:10.0.0
     ports:
       - "3000:3000"
@@ -45,7 +57,23 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     depends_on:
       - loki
-      - prometheus
+      - prometheus_shard1
+      - prometheus_shard2
+
+  grafana2:
+    image: grafana/grafana:10.0.0
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./grafana-storage:/var/lib/grafana
+      - ./grafana-config/grafana.ini:/etc/grafana/grafana.ini
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - loki
+      - prometheus_shard1
+      - prometheus_shard2
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
@@ -54,27 +82,88 @@ services:
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
     depends_on:
-      - prometheus
+      - prometheus_shard1
+      - prometheus_shard2
 
   myapp:
     build: ./app
     ports:
       - "8000:8000"
     depends_on:
-      - prometheus
+      - prometheus_shard1
+      - prometheus_shard2
 
   shoehubapp:
     image: aussiearef/shoehub:latest
     ports:
       - "8080:8080"
     depends_on:
-      - prometheus
+      - prometheus_shard1
+      - prometheus_shard2
 
   pushgateway:
     image: prom/pushgateway:v1.9.0
     container_name: pushgateway
     ports:
       - "9091:9091"
+
+  push_job:
+    build: ./app
+    command: python push_job.py
+    depends_on:
+      - pushgateway
+      - prometheus_shard1
+      - prometheus_shard2
+
+  # --------------------------
+  # Thanos Sidecars
+  # --------------------------
+  thanos-sidecar1:
+    image: thanosio/thanos:v0.30.0
+    command:
+      - sidecar
+      - --prometheus.url=http://prometheus_shard1:9090
+      - --tsdb.path=/prometheus
+      - --http-address=0.0.0.0:10901
+      - --grpc-address=0.0.0.0:10911 # different from HTTP
+    depends_on:
+      - prometheus_shard1
+    volumes:
+      - ./prometheus-shard1-data:/prometheus
+    ports:
+      - "10901:10901" # HTTP
+      - "10911:10911" # gRPC
+    restart: unless-stopped
+
+  thanos-sidecar2:
+    image: thanosio/thanos:v0.30.0
+    command:
+      - sidecar
+      - --prometheus.url=http://prometheus_shard2:9090
+      - --tsdb.path=/prometheus
+      - --http-address=0.0.0.0:10902
+      - --grpc-address=0.0.0.0:10912 # different from HTTP
+    depends_on:
+      - prometheus_shard2
+    volumes:
+      - ./prometheus-shard2-data:/prometheus
+    ports:
+      - "10902:10902" # HTTP
+      - "10912:10912" # gRPC
+    restart: unless-stopped
+
+  thanos-query:
+    image: thanosio/thanos:v0.30.0
+    command:
+      - query
+      - --http-address=0.0.0.0:10905
+      - --store=thanos-sidecar1:10911
+      - --store=thanos-sidecar2:10912
+    depends_on:
+      - thanos-sidecar1
+      - thanos-sidecar2
+    ports:
+      - "10905:10905"
 
 volumes:
   grafana-storage:

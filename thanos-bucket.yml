@@ -1,0 +1,7 @@
+type: S3
+config:
+  bucket: thanos-metrics
+  endpoint: minio:9000
+  access_key: minioadmin
+  secret_key: minioadmin
+  insecure: true # use HTTP for local testing

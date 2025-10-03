@@ -24,3 +24,4 @@ alertmanager.yml
 prometheus-shard1-data/*
 prometheus-shard2-data/*
 prometheus-shard3-data/*
+minio-data/*

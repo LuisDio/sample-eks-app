@@ -26,6 +26,13 @@ services:
       - ./prometheus1.yml:/etc/prometheus/prometheus.yml
       - ./rules:/etc/prometheus/rules
       - ./file_sd:/etc/prometheus/file_sd
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+      - "--storage.tsdb.min-block-duration=2h"
+      - "--storage.tsdb.max-block-duration=2h"
+    restart: unless-stopped
 
   prometheus_shard2:
     image: prom/prometheus:v2.53.0
@@ -36,6 +43,13 @@ services:
       - ./prometheus2.yml:/etc/prometheus/prometheus.yml
       - ./rules:/etc/prometheus/rules
       - ./file_sd:/etc/prometheus/file_sd
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+      - --storage.tsdb.min-block-duration=2h
+      - --storage.tsdb.max-block-duration=2h
+    restart: unless-stopped
 
   node-exporter:
     image: prom/node-exporter:v1.8.2
@@ -124,12 +138,15 @@ services:
       - sidecar
       - --prometheus.url=http://prometheus_shard1:9090
       - --tsdb.path=/prometheus
+      - --objstore.config-file=/etc/thanos/bucket.yml
       - --http-address=0.0.0.0:10901
       - --grpc-address=0.0.0.0:10911 # different from HTTP
     depends_on:
       - prometheus_shard1
+      - minio
     volumes:
       - ./prometheus-shard1-data:/prometheus
+      - ./thanos-bucket.yml:/etc/thanos/bucket.yml
     ports:
       - "10901:10901" # HTTP
       - "10911:10911" # gRPC
@@ -141,12 +158,15 @@ services:
       - sidecar
       - --prometheus.url=http://prometheus_shard2:9090
       - --tsdb.path=/prometheus
+      - --objstore.config-file=/etc/thanos/bucket.yml
       - --http-address=0.0.0.0:10902
       - --grpc-address=0.0.0.0:10912 # different from HTTP
     depends_on:
       - prometheus_shard2
+      - minio
     volumes:
       - ./prometheus-shard2-data:/prometheus
+      - ./thanos-bucket.yml:/etc/thanos/bucket.yml
     ports:
       - "10902:10902" # HTTP
       - "10912:10912" # gRPC
@@ -164,6 +184,30 @@ services:
       - thanos-sidecar2
     ports:
       - "10905:10905"
+
+  thanos-query-frontend:
+    image: thanosio/thanos:v0.30.0
+    command:
+      - query-frontend
+      - --http-address=0.0.0.0:10906
+      - --query-frontend.downstream-url=http://thanos-query:10905
+    depends_on:
+      - thanos-query
+    ports:
+      - "10906:10906"
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./minio-data:/data
 
 volumes:
   grafana-storage:

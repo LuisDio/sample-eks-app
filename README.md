@@ -84,6 +84,11 @@ This repository contains a Docker-based observability lab that simulates a near 
 
 ## Quick Start
 
+Before starting, make sure you have these folder created
+- prometheus-shard1-data
+- prometheus-shard2-data
+- minio-data
+
 ```bash
 # Start the full stack
 make up
